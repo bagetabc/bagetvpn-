@@ -1,45 +1,56 @@
-name: BAGETVPN iOS build check
+name: Build BagetVPN IPA
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: macos-15
+
     steps:
-      - name: Checkout BAGETVPN
+      - name: Checkout BagetVPN
+        uses: actions/checkout@v4
+
+      - name: Checkout sing-box-for-apple
         uses: actions/checkout@v4
         with:
+          repository: SagerNet/sing-box-for-apple
+          ref: dev
           path: sing-box-for-apple
-          submodules: recursive
 
-      - name: Checkout sing-box core
-        uses: actions/checkout@v4
-        with:
-          repository: SagerNet/sing-box
-          ref: testing
-          path: sing-box
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: sing-box/go.mod
-          cache-dependency-path: sing-box/go.sum
-
-      - name: Build Libbox
-        run: make lib_install lib_apple
-        working-directory: sing-box
-
-      - name: Resolve Xcode packages
-        run: xcodebuild -resolvePackageDependencies -project sing-box.xcodeproj
-        working-directory: sing-box-for-apple
-
-      - name: Compile iOS app
+      - name: Select Xcode
         run: |
-          xcodebuild build \
-            -project sing-box.xcodeproj \
+          sudo xcode-select -s \
+            /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Build iOS app
+        working-directory: sing-box-for-apple
+        run: |
+          xcodebuild \
             -scheme SFI \
             -configuration Debug \
             -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO
-        working-directory: sing-box-for-apple
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package build output
+        run: |
+          APP="sing-box-for-apple/build/DerivedData/Build/Products/Debug-iphoneos/SFI.app"
+          test -d "$APP"
+          mkdir -p dist/Payload
+          cp -R "$APP" dist/Payload/BagetVPN.app
+          cd dist
+          zip -r BagetVPN-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: BagetVPN-unsigned-IPA
+          path: dist/BagetVPN-unsigned.ipa
+          if-no-files-found: error
+ 
