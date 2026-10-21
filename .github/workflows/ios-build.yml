@@ -1,1 +1,46 @@
 
+name: BAGETVPN iOS build check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout BAGETVPN
+        uses: actions/checkout@v4
+        with:
+          path: sing-box-for-apple
+          submodules: recursive
+
+      - name: Checkout sing-box core
+        uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: testing
+          path: sing-box
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: sing-box/go.mod
+          cache-dependency-path: sing-box/go.sum
+
+      - name: Build Libbox
+        run: make lib_install lib_apple
+        working-directory: sing-box
+
+      - name: Resolve Xcode packages
+        run: xcodebuild -resolvePackageDependencies -project sing-box.xcodeproj
+        working-directory: sing-box-for-apple
+
+      - name: Compile iOS app
+        run: |
+          xcodebuild build \
+            -project sing-box.xcodeproj \
+            -scheme SFI \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO
+        working-directory: sing-box-for-apple
