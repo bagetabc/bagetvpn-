@@ -1,4 +1,4 @@
-name: Build BagetVPN IPA
+name: BagetVPN IPA Build - Fixed
 
 on:
   workflow_dispatch:
@@ -14,27 +14,69 @@ jobs:
       - name: Checkout BagetVPN
         uses: actions/checkout@v4
 
-      - name: Checkout sing-box-for-apple
-       submodules: recursive
+      - name: Checkout Apple client
         uses: actions/checkout@v4
         with:
           repository: SagerNet/sing-box-for-apple
           ref: dev
           path: sing-box-for-apple
           submodules: recursive
+          fetch-depth: 0
+
+      - name: Initialize Runestone
+        working-directory: sing-box-for-apple
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive
+          git submodule status --recursive
+          test -f Frameworks/Runestone/Package.swift
 
       - name: Select Xcode
         run: |
-          sudo xcode-select -s \
-            /Applications/Xcode_16.4.app/Contents/Developer
+          if [ -d /Applications/Xcode_16.4.app ]; then
+            sudo xcode-select -s \
+              /Applications/Xcode_16.4.app/Contents/Developer
+          fi
           xcodebuild -version
 
-      - name: Check project files
+      - name: Checkout sing-box core
+        uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: testing
+          path: sing-box-core
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: sing-box-core/go.mod
+          cache-dependency-path: sing-box-core/go.sum
+
+      - name: Install Go mobile tools
+        run: |
+          go install github.com/sagernet/gomobile/cmd/gomobile@latest
+          go install github.com/sagernet/gomobile/cmd/gobind@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Build Libbox framework
+        working-directory: sing-box-core
+        run: |
+          go run ./cmd/internal/build_libbox \
+            -target apple \
+            -platform ios,iossimulator
+
+      - name: Verify Libbox
+        run: |
+          test -d sing-box-for-apple/Libbox.xcframework
+          echo "Libbox framework found"
+
+      - name: Resolve Swift packages
         working-directory: sing-box-for-apple
         run: |
-          git submodule status --recursive
-          ls -la Frameworks/Runestone
-          test -f Frameworks/Runestone/Package.swift
+          xcodebuild \
+            -resolvePackageDependencies \
+            -scheme SFI
 
       - name: Build iOS app
         working-directory: sing-box-for-apple
@@ -48,7 +90,6 @@ jobs:
             build
 
       - name: Package IPA
-        if: success()
         run: |
           APP="sing-box-for-apple/build/DerivedData/Build/Products/Debug-iphoneos/SFI.app"
           test -d "$APP"
@@ -58,7 +99,6 @@ jobs:
           zip -r BagetVPN-unsigned.ipa Payload
 
       - name: Upload IPA
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: BagetVPN-unsigned-IPA
