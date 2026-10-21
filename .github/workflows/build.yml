@@ -20,12 +20,20 @@ jobs:
           repository: SagerNet/sing-box-for-apple
           ref: dev
           path: sing-box-for-apple
+          submodules: recursive
 
       - name: Select Xcode
         run: |
           sudo xcode-select -s \
-            /Applications/Xcode.app/Contents/Developer
+            /Applications/Xcode_16.4.app/Contents/Developer
           xcodebuild -version
+
+      - name: Check project files
+        working-directory: sing-box-for-apple
+        run: |
+          git submodule status --recursive
+          ls -la Frameworks/Runestone
+          test -f Frameworks/Runestone/Package.swift
 
       - name: Build iOS app
         working-directory: sing-box-for-apple
@@ -38,7 +46,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Package build output
+      - name: Package IPA
+        if: success()
         run: |
           APP="sing-box-for-apple/build/DerivedData/Build/Products/Debug-iphoneos/SFI.app"
           test -d "$APP"
@@ -48,6 +57,7 @@ jobs:
           zip -r BagetVPN-unsigned.ipa Payload
 
       - name: Upload IPA
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: BagetVPN-unsigned-IPA
